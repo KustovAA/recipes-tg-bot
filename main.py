@@ -12,6 +12,7 @@ from telegram.ext import (
 )
 
 logging.basicConfig(
+    filename='app.log',
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
