@@ -1,91 +1,119 @@
-from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, CallbackQuery, MenuButton, \
-    InlineKeyboardMarkup, ReplyKeyboardMarkup, InlineKeyboardButton, Message
-from telegram.ext import CallbackContext, CommandHandler, Updater, MessageHandler, Filters, InlineQueryHandler
-
 import logging
 
 from environs import Env
-
-
-env = Env()
-env.read_env(override=True)
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    Filters,
+    ConversationHandler,
+    CallbackContext,
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
+logger = logging.getLogger(__name__)
 
-def start(update: Update, context: CallbackContext):
-    like = InlineKeyboardButton(text='Я согласен', callback_data=msg)
-    dislike = InlineKeyboardButton(text='Откажусь', callback_data=msg)
-    likes = InlineKeyboardMarkup(inline_keyboard=[[like], [dislike]])
-    msg = context.bot.send_message(chat_id=update.effective_chat.id, text="Привет. Мы собираем личные данные",
-                                   reply_markup=likes)
+AGREEMENT, NAME, PHONE_NUMBER, EMAIL = range(4)
 
 
-def menu(update: Update, context: CallbackContext):
-    like = InlineKeyboardButton(text='Like', callback_data='start')
-    dislike = InlineKeyboardButton(text='Dislike', callback_data='meta')
-    likes = InlineKeyboardMarkup(inline_keyboard=[[like], [dislike]])
+def start(update: Update, context: CallbackContext) -> int:
+    reply_keyboard = [['Согласен', 'Я против']]
 
-    context.bot.send_photo(
-        chat_id=update.effective_chat.id,
-        photo="https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.blizzstatic.com%2Fdynamicmedia%2Fimage%2F115%2F5838e223c5d7a.jpg%3Fw%3D1200%26zc%3D1&f=1&nofb=1",
-        reply_markup=likes
+    update.message.reply_text(
+        'Привет, мы собираем личные данные',
+        reply_markup=ReplyKeyboardMarkup(
+            reply_keyboard, one_time_keyboard=True,
+            input_field_placeholder='Согласен or Я против?'
+        ),
     )
 
-
-def registr(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text='Ваше имя')
-
-    # context.bot.send_message(chat_id=update.effective_chat.id, text='Введите фамилию:')
-    # print(update.message.text)
+    return AGREEMENT
 
 
-def caps(update: Update, context: CallbackContext):
-    text_caps = ' '.join(context.args).upper()
-    context.bot.send_message(chat_id=update.effective_chat.id, text=text_caps)
-
-
-def inline_caps(update: Update, context: CallbackContext):
-    query = update.inline_query.query
-    if not query:
-        return
-    results = []
-    results.append(
-        InlineQueryResultArticle(
-            id=query.upper(),
-            title='Caps',
-            input_message_content=InputTextMessageContent(query.upper())
-        )
+def agreement(update: Update, context: CallbackContext) -> int:
+    user = update.message.from_user
+    logger.info("Agreement of %s: %s", user.first_name, update.message.text)
+    update.message.reply_text(
+        'Напишите вашу Фамилию Имя',
+        reply_markup=ReplyKeyboardRemove(),
     )
-    context.bot.answer_inline_query(update.inline_query.id, results)
+
+    return NAME
 
 
-def unknown(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
+def name(update: Update, context: CallbackContext) -> int:
+    user = update.message.from_user
+    logger.info("Name of %s: %s", user.first_name, update.message.text)
+    update.message.reply_text(
+        'Прекрасно. Теперь напишите ваш номер телефона'
+    )
+
+    return PHONE_NUMBER
 
 
-def reply(chat_id, text):
-    print("Привет! Пользователь с ID {} написал мне: {}".format(chat_id, text))
+def phone_number(update: Update, context: CallbackContext) -> int:
+    user = update.message.from_user
+    logger.info("Phone number of %s: %s", user.first_name, update.message.text)
+    update.message.reply_text(
+        'Отлично. И последнее, напишите ваш email'
+    )
+
+    return EMAIL
 
 
-updater = Updater(env.str("TG_TOKEN"), use_context=True)
-dispatcher = updater.dispatcher
+def email(update: Update, context: CallbackContext) -> int:
+    user = update.message.from_user
+    logger.info("Email of %s: %s", user.first_name, update.message.text)
+    update.message.reply_text(
+        'Спасибо. Добро пожаловать в наше царство блюд=))'
+    )
+    return ConversationHandler.END
 
-inline_caps_handler = InlineQueryHandler(inline_caps)
 
-start_handler = CommandHandler('start', start)
-menu_handler = CommandHandler('menu', menu)
-registr_handler = MessageHandler('registr', registr)
-# print(echo_handler)
-dispatcher.add_handler(registr_handler)
-caps_handler = CommandHandler('caps', caps)
-dispatcher.add_handler(caps_handler)
+def cancel(update: Update, context: CallbackContext) -> int:
+    """Cancels and ends the conversation."""
+    user = update.message.from_user
+    logger.info("User %s canceled the conversation.", user.first_name)
+    update.message.reply_text(
+        'Bye! I hope we can talk again some day.',
+        reply_markup=ReplyKeyboardRemove()
+    )
 
-dispatcher.add_handler(start_handler)
+    return ConversationHandler.END
 
-dispatcher.add_handler(menu_handler)
 
-updater.start_polling()
+def main() -> None:
+    env = Env()
+    env.read_env(override=True)
+    updater = Updater(env.str("TG_TOKEN"))
+    dispatcher = updater.dispatcher
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            AGREEMENT: [MessageHandler(
+                Filters.regex('^(Согласен|Я против)$'),
+                agreement)],
+            NAME: [MessageHandler(Filters.text & ~Filters.command, name)],
+            PHONE_NUMBER: [
+                MessageHandler(Filters.text & ~Filters.command, phone_number)
+            ],
+            EMAIL: [MessageHandler(Filters.text & ~Filters.command, email)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    dispatcher.add_handler(conv_handler)
+
+    updater.start_polling()
+
+    updater.idle()
+
+
+if __name__ == '__main__':
+    main()
