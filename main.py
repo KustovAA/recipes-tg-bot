@@ -29,7 +29,8 @@ def start(update: Update, context: CallbackContext) -> int:
         'Привет, мы собираем личные данные',
         reply_markup=ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True,
-            input_field_placeholder='Согласен or Я против?'
+            resize_keyboard=True,
+            input_field_placeholder='Нажми Согласен=))'
         ),
     )
 
@@ -77,11 +78,10 @@ def email(update: Update, context: CallbackContext) -> int:
 
 
 def cancel(update: Update, context: CallbackContext) -> int:
-    """Cancels and ends the conversation."""
     user = update.message.from_user
     logger.info("User %s canceled the conversation.", user.first_name)
     update.message.reply_text(
-        'Bye! I hope we can talk again some day.',
+        'Очень жаль, что вы не с нами=(',
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -97,9 +97,16 @@ def main() -> None:
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            AGREEMENT: [MessageHandler(
-                Filters.regex('^(Согласен|Я против)$'),
-                agreement)],
+            AGREEMENT: [
+                MessageHandler(
+                    Filters.regex('^Согласен$'),
+                    agreement
+                ),
+                MessageHandler(
+                    Filters.regex('^Я против$'),
+                    cancel
+                )
+            ],
             NAME: [MessageHandler(Filters.text & ~Filters.command, name)],
             PHONE_NUMBER: [
                 MessageHandler(Filters.text & ~Filters.command, phone_number)
@@ -108,7 +115,6 @@ def main() -> None:
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
-
     dispatcher.add_handler(conv_handler)
 
     updater.start_polling()
